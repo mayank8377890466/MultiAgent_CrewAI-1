@@ -1,0 +1,124 @@
+fetch_code_context:
+  description: >
+    Fetch the full source code context for the application under test.
+
+    STEP 1 -- Fetch repo file tree:
+    - Call fetch_repo_file_tree with repo_url="{git_repo_url}"
+      and branch="{git_branch}" to get the full list of all files
+      in the repository.
+
+    STEP 2 -- Filter relevant code files:
+    - Call filter_relevant_code_files with the file tree JSON to identify
+      test scripts, page objects, framework utilities, and config files.
+    - Limit to {max_code_files} files.
+
+    STEP 3 -- Download code files:
+    - Call fetch_code_files with repo_url="{git_repo_url}",
+      branch="{git_branch}", the filtered file list JSON,
+      and save_dir="{save_dir}" to download all identified files locally.
+
+    STEP 4 -- Index into code knowledge store:
+    - Call index_code_to_knowledge with repo_url="{git_repo_url}",
+      branch="{git_branch}", the downloaded file paths JSON,
+      and save_dir="{save_dir}" to create a semantic vector index
+      of all source code for future cross-referencing.
+
+    Return a JSON object with: repo_url, branch, total_files,
+    relevant_files, indexed_files, code_save_dir.
+  expected_output: >
+    A JSON object summarizing the code context fetch: repo URL, branch,
+    total files scanned, relevant code files fetched, files indexed
+    into ChromaDB, and local save directory path.
+  agent: code_context_agent
+
+fetch_build_artifacts:
+  description: >
+    For Jenkins job {job_name} build #{build_number}:
+
+    STEP 1 -- Fetch build metadata:
+    - Call fetch_build_info to get status, timestamp, duration, and build URL.
+
+    STEP 2 -- Console log:
+    - Call fetch_console_output to get the full console log text.
+    - Save it to {save_dir}/console-output.txt and note the path.
+
+    STEP 3 -- Test report:
+    - Call fetch_test_report to get the test summary (passed/failed/skipped).
+
+    STEP 4 -- List artifacts:
+    - Call fetch_all_artifacts to list all available artifact names.
+    - Store the list as a JSON-encoded string for later tool calls.
+
+    STEP 5 -- Download from build artifacts:
+    - Call download_html_report -- pass the artifact list as JSON string
+      and {save_dir}.
+    - Call download_screenshots -- pass the artifact list as JSON string
+      and {save_dir}.
+    - Call download_testng_xml -- pass the artifact list as JSON string
+      and {save_dir}.
+    - Call download_junit_xml -- pass the artifact list as JSON string
+      and {save_dir}.
+
+    STEP 6 -- Workspace HTML report (if workspace_report_path is provided
+    and not empty):
+    - Call download_workspace_html with job_name="{job_name}",
+      workspace_path="{workspace_report_path}", save_dir="{save_dir}".
+
+    STEP 7 -- Save metadata:
+    - Call build_metadata_json to save build-metadata.json with all
+      metadata plus the test report summary.
+
+    STEP 8 -- RAG Indexing:
+    - Call index_build_to_knowledge with all collected data to index
+      the console log, error lines, and test report into the ChromaDB
+      knowledge store for future retrieval.
+
+    After all downloads, return a JSON-serialized BuildData object containing:
+    - job_name, build_number, build_url, status, timestamp, duration_ms
+    - artifacts: {{html_report, screenshots, console_log, testng_xml,
+      junit_xml, metadata_json}}
+    - test_summary (the fetched test report dict)
+    - console_summary (first 500 chars of console output)
+
+    IMPORTANT: Always save the console output to disk as console-output.txt
+    in {save_dir} and include that path in artifacts.console_log.
+  expected_output: >
+    A JSON object representing a complete BuildData with all artifact paths
+    verified to exist on disk. Each file path must be an absolute path.
+  agent: fetcher_agent
+  context:
+    - fetch_code_context
+
+analyze_flaky_tests:
+  description: >
+    Receive the BuildData from the Fetcher Agent. Perform a thorough
+    root cause analysis:
+
+    STEP 1 -- Parse console errors:
+    - Call parse_console_errors with the console_log path from BuildData.
+      This extracts all error patterns, categorizes them by type, severity,
+      and outputs counts plus fix hints.
+
+    STEP 2 -- Cross-reference with past failures:
+    - Call cross_reference_with_past with the console_log path.
+      This queries the ChromaDB knowledge store for semantically similar
+      failures from previous builds and returns matches with similarity scores.
+
+    STEP 3 -- Cross-reference with source code:
+    - Call query_code_knowledge with the top error type and test name
+      to find relevant source files (test scripts, page objects, utilities)
+      that may be related to the failure.
+
+    STEP 4 -- Generate the analysis report:
+    - Call generate_analysis_report with all collected data to produce
+      a markdown report at {{save_dir}}/analysis-report.md.
+
+    The report must include: quick summary, error breakdown table, sample
+    error lines, similar past failures from RAG, and prioritized
+    recommendations with specific fix actions.
+  expected_output: >
+    The absolute path to the generated analysis-report.md file, confirming
+    the report was saved successfully.
+  agent: analysis_agent
+  context:
+    - fetch_build_artifacts

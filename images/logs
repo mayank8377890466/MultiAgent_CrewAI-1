@@ -1,0 +1,27 @@
+Source    : 10
+  Save dir  : D:\AutomationTestFixer_MultiAgent\artifacts\Advance-Selenium-3\10
+  LLM       : gemini/gemini-3.1-flash-lite @ Google AI Studio
+  Agents    : Code Context -> Fetcher -> Analysis
+  Tasks     : fetch_code_context -> fetch_build_artifacts -> analyze_flaky_tests
+
+Crew run succeeded — all 3 agents completed:
+  
+  CODE CONTEXT AGENT:
+  - Scanned 59 files in https://github.com/mayank8377890466/Advance_Selenium-1 (branch: main)
+  - Filtered 36 relevant code files (9 tests, 6 page objects, 13 utilities, 10 configs)
+  - Downloaded all 36 files to artifacts/Advance-Selenium-3/10/code/
+
+  FETCHER AGENT:
+  - Resolved build #10 (FAILURE, 184397ms)
+  - Downloaded console log, HTML report, workspace files
+  - Indexed 3 documents into flaky_test_knowledge ChromaDB collection
+  - 8 artifacts produced
+
+  ANALYSIS AGENT:
+  - Parsed console errors, cross-referenced with RAG (89.01% match)
+  - Generated analysis-report.md
+  - Git TimeoutException identified as root cause
+
+Files created:
+  - tools/code_fetcher.py       (GitHub/GitLab REST API @tool functions)
+  - tools/code_indexer.py       (ChromaDB code indexing @tool functions)
