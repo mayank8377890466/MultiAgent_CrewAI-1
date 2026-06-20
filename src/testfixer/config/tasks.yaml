@@ -122,3 +122,34 @@ analyze_flaky_tests:
   agent: analysis_agent
   context:
     - fetch_build_artifacts
+
+recommend_fixes:
+  description: >
+    Receive the analysis report path from the Analysis Agent.
+    Generate specific code/configuration fix recommendations with confidence scores.
+
+    STEP 1 -- Generate fix recommendations:
+    - Call generate_fix_recommendations with:
+      - analysis_report_path: the path to analysis-report.md
+      - save_dir: {save_dir}
+
+    This produces a JSON list of fix recommendations, each with:
+    - A unique ID
+    - Specific fix code/template
+    - Target file type (test, page_object, utility, config)
+    - Confidence score (0-100) with a label (HIGH/MEDIUM/LOW)
+
+    STEP 2 -- Generate the recommendations report:
+    - Call generate_recommendations_report with the recommendations JSON
+      and analysis_report_path to produce a human-readable markdown report
+      at {{save_dir}}/recommendations-report.md.
+
+    The report must include confidence legend, per-recommendation code blocks,
+    and accept/reject checkboxes for user decision.
+  expected_output: >
+    A JSON object containing: the path to recommendations-report.md,
+    total recommendations count, highest confidence score, and the
+    full list of recommendations with IDs, confidence scores, and fix code.
+  agent: recommendation_agent
+  context:
+    - analyze_flaky_tests

@@ -46,6 +46,11 @@ from .tools.analysis_tools import (
     cross_reference_with_past,
     generate_analysis_report,
 )
+from .tools.recommend_fixes import (
+    generate_fix_recommendations,
+    generate_recommendations_report,
+    save_accepted_recommendations,
+)
 
 
 def _get_llm() -> LLM:
@@ -134,6 +139,21 @@ class TestFixerCrew:
             verbose=True,
         )
 
+    @agent
+    def recommendation_agent(self) -> Agent:
+        return Agent(
+            config=self.agents_config["recommendation_agent"],
+            llm=_get_llm(),
+            tools=[
+                generate_fix_recommendations,
+                generate_recommendations_report,
+                save_accepted_recommendations,
+                query_code_knowledge,
+                get_code_knowledge_stats,
+            ],
+            verbose=True,
+        )
+
     @task
     def fetch_code_context(self) -> Task:
         return Task(config=self.tasks_config["fetch_code_context"])
@@ -145,6 +165,10 @@ class TestFixerCrew:
     @task
     def analyze_flaky_tests(self) -> Task:
         return Task(config=self.tasks_config["analyze_flaky_tests"])
+
+    @task
+    def recommend_fixes(self) -> Task:
+        return Task(config=self.tasks_config["recommend_fixes"])
 
     @crew
     def crew(self) -> Crew:

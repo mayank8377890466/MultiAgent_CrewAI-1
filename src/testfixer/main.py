@@ -140,8 +140,8 @@ async def _arun(
         print(f"  LLM       : {llm_model} @ Groq")
     else:
         print(f"  LLM       : llama3.1:8b @ Ollama (localhost:11434)")
-    print(f"  Agents    : Code Context -> Fetcher -> Analysis")
-    print(f"  Tasks     : fetch_code_context -> fetch_build_artifacts -> analyze_flaky_tests")
+    print(f"  Agents    : Code Context -> Fetcher -> Analysis -> Recommendation")
+    print(f"  Tasks     : fetch_code_context -> fetch_build_artifacts -> analyze_flaky_tests -> recommend_fixes")
 
     result = None
     async with managed_jenkins_client():
@@ -175,6 +175,9 @@ async def _arun(
     report_path = f"{save_dir}/analysis-report.md"
     if os.path.exists(report_path):
         print(f"  Report    : {report_path}")
+    rec_path = f"{save_dir}/recommendations-report.md"
+    if os.path.exists(rec_path):
+        print(f"  Fix Recs  : {rec_path}")
     print(f"{BOLD}{GREEN}{SEP}{RESET}\n")
 
     return str(result)
