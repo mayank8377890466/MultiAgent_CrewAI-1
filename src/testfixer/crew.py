@@ -11,7 +11,8 @@ import crewai.llms.cache as _crewai_cache
 
 _crewai_cache.mark_cache_breakpoint = lambda msg: msg
 
-_ = load_dotenv()
+# Force override so .env takes precedence over system env vars
+_ = load_dotenv(override=True)
 
 from crewai import Agent, Crew, Process, Task, LLM
 from crewai.project import CrewBase, agent, crew, task

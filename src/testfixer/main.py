@@ -23,7 +23,7 @@ if sys.platform == "win32":
 from .crew import TestFixerCrew
 from .tools.jenkins_client import managed_jenkins_client
 
-load_dotenv()
+load_dotenv(override=True)
 
 # Configure logging — suppress noisy libs, keep our own logs
 for lib in ("httpcore", "httpx", "chromadb", "urllib3", "asyncio", "mcp_jenkins", "fastmcp", "openai", "liteLLM", "crewai"):
