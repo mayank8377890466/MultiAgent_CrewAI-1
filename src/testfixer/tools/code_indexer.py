@@ -4,17 +4,19 @@ Creates a semantic index of test scripts, page objects, utilities, and configs
 so the Analysis Agent can cross-reference failures against actual source code.
 
 Uses a separate 'code_knowledge' ChromaDB collection from the build logs.
+Uses batch indexing to avoid opening a new SQLite connection per file.
 """
 
 import json as _json
 import logging
+import re
 from pathlib import Path
 
 from crewai.tools import tool
 
 from .knowledge_store import (
     get_or_create_collection,
-    index_document as _index_doc,
+    index_documents_batch,
     query_similar,
     count_documents,
 )
@@ -24,8 +26,21 @@ logger = logging.getLogger(__name__)
 CODE_COLLECTION = "code_knowledge"
 
 
+def _classify_file_by_content(filename: str) -> str:
+    name = filename.lower()
+    if re.search(r"test|spec|it\.", name):
+        return "test"
+    if re.search(r"page|screen|view|fragment", name):
+        return "page_object"
+    if re.search(r"util|helper|base|factory|driver|manager|constants|config", name):
+        return "utility"
+    if re.search(r"\.xml$|\.properties$|\.yaml$|\.yml$|\.toml$|\.json$", name):
+        return "config"
+    return "other"
+
+
 @tool("Index Code Files to Knowledge")
-async def index_code_to_knowledge(
+def index_code_to_knowledge(
     repo_url: str,
     branch: str,
     code_files_json: str,
@@ -36,6 +51,9 @@ async def index_code_to_knowledge(
     Each file is indexed with metadata: filepath, category, repo, branch.
     This enables semantic search against actual source code during analysis.
 
+    Uses batch indexing — all files are accumulated and added in one
+    ChromaDB call, preventing connection-per-file storms on Windows.
+
     Parameters:
     - repo_url: Git repository URL
     - branch: Branch name
@@ -45,11 +63,8 @@ async def index_code_to_knowledge(
     Returns JSON with indexing stats.
     """
     file_paths = _json.loads(code_files_json) if isinstance(code_files_json, str) else code_files_json
-
-    code_dir = Path(save_dir) / CODE_COLLECTION.split("_")[0] if not (Path(save_dir) / "code").exists() else Path(save_dir) / "code"
-
-    # Resolve code_dir from save_dir
     code_dir = Path(save_dir) / "code"
+
     if not code_dir.exists():
         return _json.dumps({"error": f"Code directory not found: {code_dir}", "indexed": 0})
 
@@ -61,8 +76,12 @@ async def index_code_to_knowledge(
         if not file_paths:
             return _json.dumps({"error": f"No files found in {code_dir}", "indexed": 0})
 
-    indexed = 0
+    repo_name = repo_url.split("/")[-1].replace(".git", "") if "/" in repo_url else repo_url
+
+    # Accumulate all documents and batch-index them
+    batch_docs: list[tuple[str, str, dict]] = []
     skipped = 0
+
     for fpath in file_paths:
         file_path = Path(fpath)
         if not file_path.exists():
@@ -83,23 +102,20 @@ async def index_code_to_knowledge(
         if len(content) > 8000:
             content = content[:8000]
 
-        # Derive original filename from the flattened local name
         local_name = file_path.name
         original_path = local_name.replace("_", "/", 1) if "_" in local_name else local_name
 
-        doc_id = f"code_{file_path.stem}"[:63]  # ChromaDB ID limit
+        doc_id = f"code_{file_path.stem}"[:63]
         metadata = {
             "filepath": original_path,
-            "repo": repo_url.split("/")[-1].replace(".git", "") if "/" in repo_url else repo_url,
+            "repo": repo_name,
             "branch": branch,
             "category": _classify_file_by_content(local_name),
             "source": repo_url,
         }
+        batch_docs.append((doc_id, content, metadata))
 
-        if _index_doc(doc_id, content, metadata, CODE_COLLECTION):
-            indexed += 1
-        else:
-            skipped += 1
+    indexed = index_documents_batch(batch_docs, CODE_COLLECTION)
 
     logger.info("Code indexing: %d indexed, %d skipped", indexed, skipped)
     return _json.dumps({
@@ -112,7 +128,7 @@ async def index_code_to_knowledge(
 
 
 @tool("Query Code Knowledge")
-async def query_code_knowledge(
+def query_code_knowledge(
     query_text: str,
     n_results: int = 5,
 ) -> str:
@@ -145,23 +161,12 @@ async def query_code_knowledge(
 
 
 @tool("Get Code Knowledge Stats")
-async def get_code_knowledge_stats() -> str:
+def get_code_knowledge_stats(collection_name: str = "code_knowledge") -> str:
     """
     Return statistics about the code knowledge store.
+
+    Args:
+        collection_name: The name of the knowledge collection (default: 'code_knowledge')
     """
     count = count_documents(CODE_COLLECTION)
     return _json.dumps({"total_documents": count, "collection": CODE_COLLECTION})
-
-
-def _classify_file_by_content(filename: str) -> str:
-    import re
-    name = filename.lower()
-    if re.search(r"test|spec|it\.", name):
-        return "test"
-    if re.search(r"page|screen|view|fragment", name):
-        return "page_object"
-    if re.search(r"util|helper|base|factory|driver|manager|constants|config", name):
-        return "utility"
-    if re.search(r"\.xml$|\.properties$|\.yaml$|\.yml$|\.toml$|\.json$", name):
-        return "config"
-    return "other"

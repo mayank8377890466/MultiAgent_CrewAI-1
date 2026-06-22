@@ -75,7 +75,7 @@ ERROR_PATTERNS = {
 # Tool: Parse Console Log for Errors
 # ---------------------------------------------------------------------------
 @tool("Parse Console Log for Errors")
-async def parse_console_errors(console_log_path: str) -> str:
+def parse_console_errors(console_log_path: str) -> str:
     """
     Parse a console log file and extract all error patterns.
 
@@ -148,7 +148,7 @@ async def parse_console_errors(console_log_path: str) -> str:
 # Tool: Cross-reference with RAG Knowledge
 # ---------------------------------------------------------------------------
 @tool("Cross-reference with Past Failures")
-async def cross_reference_with_past(console_log_path: str, n_results: int = 5) -> str:
+def cross_reference_with_past(console_log_path: str, n_results: int = 5) -> str:
     """
     Search the RAG knowledge store for past failures similar to the
     errors in the current console log.

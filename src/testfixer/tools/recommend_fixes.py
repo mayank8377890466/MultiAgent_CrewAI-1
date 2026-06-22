@@ -196,7 +196,7 @@ def _compute_confidence(error_type: str, fix_category: str, code_available: bool
 
 
 @tool("Generate Fix Recommendations")
-async def generate_fix_recommendations(
+def generate_fix_recommendations(
     analysis_report_path: str,
     save_dir: str,
     parsed_errors_json: str = "",
@@ -220,7 +220,22 @@ async def generate_fix_recommendations(
     # If parsed_errors_json provided, use it directly
     if parsed_errors_json:
         errors = _json.loads(parsed_errors_json) if isinstance(parsed_errors_json, str) else parsed_errors_json
-        error_summary = errors.get("error_summary", [])
+        # Handle multiple possible key names for error list
+        error_list = (
+            errors.get("error_summary")
+            or errors.get("errors")
+            or errors.get("ErrorSummary")
+            or errors.get("error_line_samples")
+        )
+        if isinstance(error_list, list):
+            for err in error_list:
+                if isinstance(err, dict) and err.get("type"):
+                    error_summary.append({
+                        "type": err["type"],
+                        "count": err.get("count", err.get("Count", 1)),
+                        "severity": err.get("severity", err.get("Severity", "MEDIUM")),
+                        "category": err.get("category", err.get("Category", "Unknown")),
+                    })
 
     # Fallback: parse the analysis report to extract error types
     if not error_summary:
@@ -230,10 +245,15 @@ async def generate_fix_recommendations(
             for line in report_text.splitlines():
                 for err_type in FIX_PATTERNS:
                     if err_type in line and ("|" in line or "**" in line) and err_type not in [e.get("type") for e in error_summary]:
+                        # Extract severity from the markdown table if available
+                        severity = "HIGH"
+                        sev_match = re.search(r"\|\s*(CRITICAL|HIGH|MEDIUM|LOW)\s*\|", line)
+                        if sev_match:
+                            severity = sev_match.group(1)
                         error_summary.append({
                             "type": err_type,
                             "count": 1,
-                            "severity": "HIGH",
+                            "severity": severity,
                             "category": "Auto-detected from report",
                         })
         except Exception:
@@ -296,7 +316,7 @@ async def generate_fix_recommendations(
 
 
 @tool("Save Accepted Recommendations")
-async def save_accepted_recommendations(
+def save_accepted_recommendations(
     recommendations_json: str,
     accepted_ids_json: str,
     save_dir: str,

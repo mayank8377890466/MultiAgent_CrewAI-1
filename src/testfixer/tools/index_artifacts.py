@@ -2,6 +2,9 @@
 CrewAI @tool functions for RAG: indexing artifacts and querying knowledge.
 These are attached to the Fetcher Agent so it can index build data and
 retrieve similar past failures from the ChromaDB vector store.
+
+Uses synchronous tools and batch indexing where possible to avoid
+connection-per-file storms on Windows.
 """
 
 import json as _json
@@ -10,13 +13,13 @@ from pathlib import Path
 
 from crewai.tools import tool
 
-from .knowledge_store import index_document, query_similar, count_documents
+from .knowledge_store import index_document, index_documents_batch, query_similar, count_documents
 
 logger = logging.getLogger(__name__)
 
 
 @tool("Index Build Data for RAG")
-async def index_build_to_knowledge(
+def index_build_to_knowledge(
     job_name: str,
     build_number: int,
     status: str,
@@ -37,7 +40,6 @@ async def index_build_to_knowledge(
     - test_report_json: JSON string of the test report dict
     - build_url: Jenkins build URL
     """
-    indexed = 0
     job_clean = job_name.strip()
     base_id = f"{job_clean}_{build_number}"
     base_meta = {
@@ -47,52 +49,45 @@ async def index_build_to_knowledge(
         "build_url": build_url,
     }
 
-    # Index the full console log as a single doc
+    # Read console log
     try:
         log_text = Path(console_log_path).read_text(encoding="utf-8", errors="replace")
     except Exception:
         log_text = ""
 
-    if log_text:
-        if index_document(
-            f"{base_id}_console",
-            log_text,
-            {**base_meta, "artifact_type": "console_log"},
-        ):
-            indexed += 1
+    # Collect all documents for batch indexing
+    batch_docs: list[tuple[str, str, dict]] = []
 
-    # Index error lines separately for precision retrieval
-    error_lines = [line for line in log_text.splitlines() if "error" in line.lower() or "fail" in line.lower() or "exception" in line.lower() or "stacktrace" in line.lower()]
-    if error_lines:
-        error_chunks = _chunk_text("\n".join(error_lines), chunk_size=500)
-        for i, chunk in enumerate(error_chunks):
-            if index_document(
-                f"{base_id}_errors_{i}",
-                chunk,
-                {**base_meta, "artifact_type": "console_errors"},
-            ):
-                indexed += 1
+    if log_text:
+        batch_docs.append((f"{base_id}_console", log_text, {**base_meta, "artifact_type": "console_log"}))
+
+        # Error lines for precision retrieval
+        error_lines = [
+            line for line in log_text.splitlines()
+            if "error" in line.lower() or "fail" in line.lower() or "exception" in line.lower() or "stacktrace" in line.lower()
+        ]
+        if error_lines:
+            error_chunks = _chunk_text("\n".join(error_lines), chunk_size=500)
+            for i, chunk in enumerate(error_chunks):
+                batch_docs.append((f"{base_id}_errors_{i}", chunk, {**base_meta, "artifact_type": "console_errors"}))
 
     # Index test report as structured text
     if test_report_json:
         try:
             report = _json.loads(test_report_json) if isinstance(test_report_json, str) else test_report_json
             report_text = _json.dumps(report, indent=2, default=str)
-            if index_document(
-                f"{base_id}_testreport",
-                report_text,
-                {**base_meta, "artifact_type": "test_report"},
-            ):
-                indexed += 1
+            batch_docs.append((f"{base_id}_testreport", report_text, {**base_meta, "artifact_type": "test_report"}))
         except Exception:
             pass
+
+    indexed = index_documents_batch(batch_docs)
 
     logger.info("Indexed %d documents for %s #%s", indexed, job_clean, build_number)
     return _json.dumps({"indexed_documents": indexed, "build_id": base_id})
 
 
 @tool("Query Knowledge Store")
-async def query_flaky_knowledge(
+def query_flaky_knowledge(
     query_text: str,
     n_results: int = 5,
 ) -> str:
@@ -118,7 +113,7 @@ async def query_flaky_knowledge(
 
 
 @tool("Get Knowledge Stats")
-async def get_knowledge_stats(collection_name: str = "flaky_test_knowledge") -> str:
+def get_knowledge_stats(collection_name: str = "flaky_test_knowledge") -> str:
     """
     Return statistics about the current knowledge store.
 

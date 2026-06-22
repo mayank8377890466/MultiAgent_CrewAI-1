@@ -1,9 +1,11 @@
 # llm
 - Groq's llama-3.1-70b-versatile was decommissioned. Must use a currently-supported Groq model (check https://console.groq.com/docs/deprecations). Confidence: 0.75
 - When using CrewAI 1.14.x with non-Anthropic providers (Groq, OpenAI-compatible), monkey-patch `crewai.llms.cache.mark_cache_breakpoint = lambda msg: msg` before any agent creation to avoid cache_breakpoint injection bug (#5886). Confidence: 0.80
-- Use Ollama with local models (e.g., llama3.1:8b) as a fallback when Groq rate limits are hit. CrewAI supports it via `LLM(model="ollama/llama3.1:8b", base_url="http://localhost:11434")`. Confidence: 0.30
-- Use Gemini 3.1 Flash-Lite as fallback when Groq rate limits are hit (replaces local Ollama). CrewAI native support via `LLM(model="gemini/gemini-3.1-flash-lite", api_key=os.getenv("GEMINI_API_KEY"))`. Confidence: 0.65
+- Do NOT use Ollama as fallback — local models consume too much RAM (8GB systems hang), use cloud providers (Gemini/Groq) instead. Confidence: 0.70
+- Use Gemini 3.1 Flash-Lite as fallback when Groq rate limits are hit (replaces local Ollama). CrewAI native support via `LLM(model="gemini/gemini-3.1-flash-lite", api_key=os.getenv("GEMINI_API_KEY"))`. Confidence: 0.75
 - Groq model names in litellm/CrewAI require the full provider path. Use `groq/meta-llama/llama-4-scout-17b-16e-instruct` (not `groq/llama-4-scout-17b-16e-instruct`). Verify model names via litellm docs before using. Confidence: 0.75
 - Groq silently drops tools beyond ~12 per agent. When an agent has 16+ tools, the LLM calls tools that aren't in the request, causing "tool_use_failed" errors. Consolidate download/utility tools to stay under ~12 per agent. Confidence: 0.70
 - Groq `llama-4-scout-17b-16e-instruct` produces malformed final answers with CrewAI native tool calling — the model returns JSON as a function call instead of text after tool results come back. Use `llama-3.3-70b-versatile` or `llama-3.1-8b-instant` instead for CrewAI agents. Confidence: 0.70
 - Groq free tier TPM limits (6K–12K tokens/min) are too tight for CrewAI multi-agent workloads where all prior tool results are re-sent with each LLM call. Use Gemini (no TPM/TPD caps) for production, not Groq free tier. Confidence: 0.70
+- python-dotenv does not strip inline `#` comments from .env values by default — `KEY=value # comment` sets KEY to `"value # comment"` including the comment. Always place comments on their own line above the setting, never inline. Confidence: 0.70
+- python-dotenv's `load_dotenv()` does not override existing system environment variables by default. When .env values must take precedence over Windows/system env vars (e.g., LLM_PROVIDER that conflicts with a globally-set value), use `load_dotenv(override=True)`. Confidence: 0.70
