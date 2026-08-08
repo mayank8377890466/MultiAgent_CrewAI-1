@@ -18,6 +18,9 @@ dependencies = [
 testfixer = "testfixer.main:run_cli"
 testfixer-ui = "testfixer.ui:main"
 
+[tool.vercel]
+entrypoint = "main.py"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
