@@ -11,10 +11,12 @@ dependencies = [
     "httpx>=0.28.0",
     "sentence-transformers>=3.0.0",
     "litellm>=1.0.0",
+    "streamlit>=1.40.0",
 ]
 
 [project.scripts]
 testfixer = "testfixer.main:run_cli"
+testfixer-ui = "testfixer.ui:main"
 
 [build-system]
 requires = ["hatchling"]
